@@ -5,9 +5,16 @@
 
 import streamlit as st
 import pandas as pd
-import plotly.express as px
-import plotly.graph_objects as go
 from datetime import datetime
+
+# plotly import 시도
+try:
+    import plotly.express as px
+    import plotly.graph_objects as go
+    PLOTLY_AVAILABLE = True
+except ImportError:
+    PLOTLY_AVAILABLE = False
+    st.warning("⚠️ plotly가 설치되지 않아 차트 기능이 제한됩니다.")
 
 # 로컬 모듈
 import config
@@ -171,39 +178,54 @@ def display_results(result: dict):
     all_prices = stats['active_prices'] + stats['sold_prices']
     
     if all_prices:
-        # 히스토그램
-        fig = px.histogram(
-            x=all_prices,
-            nbins=20,
-            labels={'x': '가격 (円)', 'y': '상품 수'},
-            title="가격대별 상품 분포"
-        )
-        fig.update_layout(showlegend=False)
-        st.plotly_chart(fig, use_container_width=True)
-        
-        # 박스 플롯
-        fig_box = go.Figure()
-        
-        if stats['active_prices']:
-            fig_box.add_trace(go.Box(
-                y=stats['active_prices'],
-                name='판매중',
-                marker_color='lightgreen'
-            ))
-        
-        if stats['sold_prices']:
-            fig_box.add_trace(go.Box(
-                y=stats['sold_prices'],
-                name='판매완료',
-                marker_color='lightgray'
-            ))
-        
-        fig_box.update_layout(
-            title="판매 상태별 가격 분포",
-            yaxis_title="가격 (円)",
-            showlegend=True
-        )
-        st.plotly_chart(fig_box, use_container_width=True)
+        if PLOTLY_AVAILABLE:
+            # 히스토그램
+            fig = px.histogram(
+                x=all_prices,
+                nbins=20,
+                labels={'x': '가격 (円)', 'y': '상품 수'},
+                title="가격대별 상품 분포"
+            )
+            fig.update_layout(showlegend=False)
+            st.plotly_chart(fig, use_container_width=True)
+            
+            # 박스 플롯
+            fig_box = go.Figure()
+            
+            if stats['active_prices']:
+                fig_box.add_trace(go.Box(
+                    y=stats['active_prices'],
+                    name='판매중',
+                    marker_color='lightgreen'
+                ))
+            
+            if stats['sold_prices']:
+                fig_box.add_trace(go.Box(
+                    y=stats['sold_prices'],
+                    name='판매완료',
+                    marker_color='lightgray'
+                ))
+            
+            fig_box.update_layout(
+                title="판매 상태별 가격 분포",
+                yaxis_title="가격 (円)",
+                showlegend=True
+            )
+            st.plotly_chart(fig_box, use_container_width=True)
+        else:
+            # plotly가 없을 때 대체 - Streamlit 기본 차트
+            st.bar_chart(pd.DataFrame({'가격': all_prices}).value_counts().sort_index())
+            
+            # 간단한 통계 표시
+            col1, col2 = st.columns(2)
+            with col1:
+                if stats['active_prices']:
+                    st.write("**판매중 가격 분포**")
+                    st.write(pd.DataFrame(stats['active_prices'], columns=['가격']).describe())
+            with col2:
+                if stats['sold_prices']:
+                    st.write("**판매완료 가격 분포**")
+                    st.write(pd.DataFrame(stats['sold_prices'], columns=['가격']).describe())
     
     # 필터
     st.markdown("### 🎯 상품 목록")
