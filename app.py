@@ -1,88 +1,92 @@
 """
-포켓몬 카드 가격 검색 - 완전 독립 실행 버전
-모든 기능이 이 파일 하나에 포함됨
+포켓몬 카드 가격 검색 - 데모 버전
+Mercapi 대신 샘플 데이터 사용 (Streamlit Cloud 배포용)
 """
 
 import streamlit as st
 import pandas as pd
-import asyncio
-import statistics
+import random
 from datetime import datetime
 from typing import List, Dict, Optional
-
-# ===== mercapi import =====
-try:
-    from mercapi import Mercapi
-    MERCAPI_AVAILABLE = True
-except ImportError:
-    MERCAPI_AVAILABLE = False
+import statistics
 
 # ===== 설정 =====
 CURRENCY = "¥"
 MERCARI_ITEM_URL = "https://jp.mercari.com/item"
-DEFAULT_SEARCH_LIMIT = 120
 
 # ===== 페이지 설정 =====
 st.set_page_config(
-    page_title="🎴 포켓몬 카드 가격 검색",
+    page_title="🎴 포켓몬 카드 가격 검색 (데모)",
     page_icon="🎴",
     layout="wide"
 )
 
+# ===== 샘플 데이터 생성 함수 =====
+
+def generate_sample_data(card_number: str, card_name: Optional[str] = None) -> List[Dict]:
+    """샘플 데이터 생성 (실제 mercapi 대신)"""
+    
+    # 샘플 포켓몬 카드 이미지 URL
+    sample_images = [
+        "https://images.pokemontcg.io/base1/4_hires.png",
+        "https://images.pokemontcg.io/base1/1_hires.png",
+        "https://images.pokemontcg.io/base1/2_hires.png",
+    ]
+    
+    # 가격 범위 설정 (카드 번호에 따라 다르게)
+    base_price = 1000
+    if "pikachu" in (card_name or "").lower() or "025" in card_number:
+        base_price = 2000
+    
+    # 30~80개의 샘플 데이터 생성
+    num_items = random.randint(30, 80)
+    listings = []
+    
+    for i in range(num_items):
+        # 가격 변동
+        price = int(base_price * random.uniform(0.5, 2.0))
+        
+        # 상태 (70%는 판매중, 30%는 판매완료)
+        status = "on_sale" if random.random() > 0.3 else "sold_out"
+        
+        listing = {
+            'item_id': f'm{random.randint(10000000000, 99999999999)}',
+            'name': f'ポケモンカード {card_number} {card_name or ""}',
+            'price': price,
+            'status': status,
+            'thumbnail': random.choice(sample_images),
+            'url': f"{MERCARI_ITEM_URL}/m{random.randint(10000000000, 99999999999)}",
+        }
+        listings.append(listing)
+    
+    return listings
+
+
 # ===== 핵심 함수들 =====
 
-def search_card_sync(card_number: str, card_name: Optional[str] = None) -> Dict:
-    """포켓몬 카드 검색"""
-    
-    if not MERCAPI_AVAILABLE:
-        return {
-            'success': False, 
-            'error': 'mercapi 라이브러리가 필요합니다. pip install mercapi', 
-            'listings': []
-        }
+def search_card_demo(card_number: str, card_name: Optional[str] = None) -> Dict:
+    """데모 검색 (샘플 데이터 반환)"""
     
     search_query = f"ポケモンカード {card_number}"
     if card_name:
         search_query += f" {card_name}"
     
     try:
-        mercapi = Mercapi()
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        
-        results = loop.run_until_complete(
-            mercapi.search(
-                keyword=search_query,
-                limit=DEFAULT_SEARCH_LIMIT,
-                sort='created_time',
-                order='desc'
-            )
-        )
-        loop.close()
-        
-        listings = []
-        for item in results.items:
-            listing = {
-                'item_id': item.id,
-                'name': item.name,
-                'price': item.price,
-                'status': item.status,
-                'thumbnail': item.thumbnails[0] if item.thumbnails else "",
-                'url': f"{MERCARI_ITEM_URL}/{item.id}",
-            }
-            listings.append(listing)
+        listings = generate_sample_data(card_number, card_name)
         
         return {
             'success': True,
             'query': search_query,
-            'listings': listings
+            'listings': listings,
+            'is_demo': True
         }
         
     except Exception as e:
         return {
             'success': False,
             'error': str(e),
-            'listings': []
+            'listings': [],
+            'is_demo': True
         }
 
 
@@ -122,15 +126,12 @@ def format_price(price: Optional[float]) -> str:
 def main():
     """메인 앱"""
     
+    # 데모 알림
+    st.info("ℹ️ **데모 버전**: 실제 메르카리 데이터 대신 샘플 데이터를 사용합니다. 실제 배포 시에는 mercapi를 사용하세요.")
+    
     # 헤더
     st.title("🎴 포켓몬 카드 가격 검색")
-    st.markdown("**메르카리 일본**에서 실시간 포켓몬 카드 시세를 확인하세요")
-    
-    # mercapi 체크
-    if not MERCAPI_AVAILABLE:
-        st.error("❌ mercapi 라이브러리가 설치되지 않았습니다.")
-        st.code("pip install mercapi", language="bash")
-        st.stop()
+    st.markdown("**메르카리 일본** 가격 검색 데모")
     
     # 사이드바 - 검색
     with st.sidebar:
@@ -145,26 +146,21 @@ def main():
             
             card_name = st.text_input(
                 "카드 이름 (선택)",
-                placeholder="예: 피카츄, リザードン",
+                placeholder="예: 피카츄, Pikachu",
                 help="더 정확한 검색을 위해 입력"
             )
             
             search_btn = st.form_submit_button(
-                "🔍 검색하기",
+                "🔍 검색하기 (데모)",
                 type="primary",
                 use_container_width=True
             )
         
         st.divider()
-        st.caption("💡 **사용 팁**")
-        st.caption("• 카드 번호는 필수입니다")
-        st.caption("• 검색은 30초~1분 소요됩니다")
-        st.caption("• 최대 120개 상품을 검색합니다")
-        
-        st.divider()
-        st.caption("⚠️ **주의사항**")
-        st.caption("• 메르카리 이용약관을 준수하세요")
-        st.caption("• 과도한 검색은 제한될 수 있습니다")
+        st.caption("💡 **데모 기능**")
+        st.caption("• 샘플 데이터로 즉시 확인")
+        st.caption("• 실제 기능 미리보기")
+        st.caption("• 검색마다 랜덤 데이터 생성")
     
     # 검색 실행
     if search_btn:
@@ -172,9 +168,9 @@ def main():
             st.error("❌ 카드 번호를 입력해주세요!")
             return
         
-        # 검색 진행
-        with st.spinner("🔄 메르카리에서 데이터를 가져오는 중... 잠시만 기다려주세요!"):
-            result = search_card_sync(card_number.strip(), card_name.strip() if card_name else None)
+        # 검색 진행 (데모는 즉시 완료)
+        with st.spinner("🔄 데이터 생성 중..."):
+            result = search_card_demo(card_number.strip(), card_name.strip() if card_name else None)
         
         # 결과 처리
         if not result['success']:
@@ -183,14 +179,12 @@ def main():
         
         if not result['listings']:
             st.warning("⚠️ 검색 결과가 없습니다.")
-            st.info(f"검색어: `{result.get('query', '')}`")
-            st.caption("💡 카드 번호나 이름을 다시 확인해보세요")
             return
         
         # 세션에 저장
         st.session_state['result'] = result
         st.session_state['card_number'] = card_number
-        st.success(f"✅ 검색 완료! {len(result['listings'])}개의 상품을 찾았습니다.")
+        st.success(f"✅ 검색 완료! {len(result['listings'])}개의 샘플 데이터 생성")
     
     # 결과 표시
     if 'result' in st.session_state:
@@ -217,79 +211,48 @@ def display_results():
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
-        st.metric("평균 가격", format_price(stats['avg']), help="전체 상품의 평균 가격")
+        st.metric("평균 가격", format_price(stats['avg']))
     with col2:
-        st.metric("중간 가격", format_price(stats['median']), help="중간값 (median)")
+        st.metric("중간 가격", format_price(stats['median']))
     with col3:
-        st.metric("최저 가격", format_price(stats['min']), help="가장 저렴한 상품")
+        st.metric("최저 가격", format_price(stats['min']))
     with col4:
-        st.metric("최고 가격", format_price(stats['max']), help="가장 비싼 상품")
+        st.metric("최고 가격", format_price(stats['max']))
     
     col1, col2 = st.columns(2)
     
     with col1:
-        st.metric("판매중 🟢", f"{stats['active']}개", help="현재 판매 중인 상품")
+        st.metric("판매중 🟢", f"{stats['active']}개")
     with col2:
-        st.metric("판매완료 ⚫", f"{stats['sold']}개", help="이미 판매된 상품")
+        st.metric("판매완료 ⚫", f"{stats['sold']}개")
     
     # 가격 분포 차트
     st.markdown("### 📈 가격 분포")
     
     if stats['active_prices'] or stats['sold_prices']:
         all_prices = stats['active_prices'] + stats['sold_prices']
-        
-        # 가격대별 분포 (Streamlit 기본 차트)
         df_prices = pd.DataFrame({'가격': all_prices})
-        price_counts = df_prices['가격'].value_counts().sort_index()
-        
-        st.bar_chart(price_counts)
-        
-        # 간단한 통계 테이블
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            if stats['active_prices']:
-                st.write("**판매중 상품 가격 분포**")
-                df_active = pd.DataFrame(stats['active_prices'], columns=['가격'])
-                st.dataframe(df_active.describe(), use_container_width=True)
-        
-        with col2:
-            if stats['sold_prices']:
-                st.write("**판매완료 상품 가격 분포**")
-                df_sold = pd.DataFrame(stats['sold_prices'], columns=['가격'])
-                st.dataframe(df_sold.describe(), use_container_width=True)
+        st.bar_chart(df_prices['가격'].value_counts().sort_index())
     
     # 상품 목록
     st.markdown("### 🎯 상품 목록")
     
-    # 필터 옵션
+    # 필터
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        status_filter = st.selectbox(
-            "상태 필터",
-            ["전체 보기", "판매중만", "판매완료만"]
-        )
-    
+        status_filter = st.selectbox("상태", ["전체", "판매중", "판매완료"])
     with col2:
-        sort_by = st.selectbox(
-            "정렬 기준",
-            ["가격 낮은순", "가격 높은순"]
-        )
-    
+        sort_by = st.selectbox("정렬", ["가격 낮은순", "가격 높은순"])
     with col3:
-        items_per_row = st.select_slider(
-            "한 줄에 표시",
-            options=[2, 3, 4, 5],
-            value=4
-        )
+        items_per_row = st.select_slider("한 줄에", options=[2, 3, 4, 5], value=4)
     
     # 필터링
     filtered = listings.copy()
     
-    if status_filter == "판매중만":
+    if status_filter == "판매중":
         filtered = [l for l in filtered if l['status'] != 'sold_out']
-    elif status_filter == "판매완료만":
+    elif status_filter == "판매완료":
         filtered = [l for l in filtered if l['status'] == 'sold_out']
     
     # 정렬
@@ -298,9 +261,9 @@ def display_results():
     else:
         filtered = sorted(filtered, key=lambda x: x['price'], reverse=True)
     
-    st.caption(f"📦 총 {len(filtered)}개 상품")
+    st.caption(f"📦 {len(filtered)}개 상품")
     
-    # 그리드로 상품 표시
+    # 그리드
     if filtered:
         for i in range(0, len(filtered), items_per_row):
             cols = st.columns(items_per_row)
@@ -311,63 +274,32 @@ def display_results():
                     item = filtered[idx]
                     
                     with col:
-                        # 이미지
-                        if item['thumbnail']:
-                            st.image(item['thumbnail'], use_container_width=True)
-                        else:
-                            st.info("🖼️ 이미지 없음")
+                        st.image(item['thumbnail'], use_container_width=True)
                         
-                        # 상품명 (30자로 제한)
                         name = item['name'][:30] + "..." if len(item['name']) > 30 else item['name']
                         st.caption(name)
                         
-                        # 가격
                         st.markdown(f"**{format_price(item['price'])}**")
                         
-                        # 상태 배지
                         if item['status'] == 'sold_out':
                             st.markdown("🔴 **판매완료**")
                         else:
                             st.markdown("🟢 **판매중**")
                         
-                        # 링크 버튼
-                        st.link_button(
-                            "메르카리에서 보기",
-                            item['url'],
-                            use_container_width=True
-                        )
-                        
+                        st.link_button("보기 (데모)", item['url'], use_container_width=True)
                         st.divider()
-    else:
-        st.info("필터 조건에 맞는 상품이 없습니다.")
     
-    # 데이터 다운로드
+    # CSV 다운로드
     st.markdown("### 📥 데이터 다운로드")
     
     if filtered:
         df = pd.DataFrame(filtered)
-        
-        # 한글 컬럼명으로 변경
-        df_download = df.copy()
-        df_download['상태'] = df_download['status'].map({
-            'sold_out': '판매완료',
-            'on_sale': '판매중'
-        })
-        df_download['가격_formatted'] = df_download['price'].apply(format_price)
-        
-        # CSV 생성
-        csv = df_download[['name', '가격_formatted', '상태', 'url']].to_csv(
-            index=False, 
-            encoding='utf-8-sig',
-            columns=['name', '가격_formatted', '상태', 'url'],
-            header=['상품명', '가격', '상태', 'URL']
-        )
-        
+        csv = df.to_csv(index=False, encoding='utf-8-sig')
         st.download_button(
-            label="📄 CSV 파일 다운로드",
-            data=csv,
-            file_name=f"pokemon_card_{st.session_state['card_number']}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-            mime="text/csv",
+            "📄 CSV 다운로드",
+            csv,
+            f"pokemon_demo_{st.session_state['card_number']}_{datetime.now().strftime('%Y%m%d')}.csv",
+            "text/csv",
             use_container_width=True
         )
 
